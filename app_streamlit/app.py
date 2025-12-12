@@ -21,18 +21,18 @@ if __name__ == "__main__":
             with st.spinner("Analyse de l'article en cours..."):
                 try:
                     response = requests.post(
-                        "http://localhost:8000/predict",
+                        "https://olivier-52-climate-fake-news-api.hf.space/predict",
                         json={"text": user_input}
                     )
                     response.raise_for_status()
                     result = response.json()
                     prediction = result.get("prediction", "unknown")
 
-                    if prediction == "real":
+                    if prediction == 2:
                         st.success("L'article est probablement vrai.")
-                    elif prediction == "fake":
+                    elif prediction == 1:
                         st.error("L'article est probablement faux.")
-                    elif prediction == "biased":
+                    elif prediction == 0:
                         st.warning("L'article est probablement Vrai, mais biaisé.")
                     else:
                         st.info("L'article n'a pas pu être classé.")

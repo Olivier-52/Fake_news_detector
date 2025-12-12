@@ -2,6 +2,7 @@ import pandas as pd
 import time
 import mlflow
 import os
+import pickle
 from mlflow.models.signature import infer_signature
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
@@ -14,6 +15,7 @@ mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_APP_URI"])
 MLFLOW_TRACKING_APP_URI= os.environ["MLFLOW_TRACKING_APP_URI"]
 AWS_ACCESS_KEY_ID = os.environ["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
+
 URL_TRAIN_DATA = "hf://datasets/readerbench/fakenews-climate-fr/fake-fr.csv"
 EXPERIMENT_NAME = "Climate_Fake_News_Detector_Project"
 TARGET_COLUMN = "Label"
@@ -66,6 +68,13 @@ if __name__ == "__main__":
             registered_model_name="climate-fake-news-detector-model-XGBoost-v1",
             signature=infer_signature(X, predictions),
         )
+
+        with open("vectorizer.pkl", "wb") as f:
+            pickle.dump(vectorizer, f)
+        
+        mlflow.log_artifact("vectorizer.pkl")
+
+        os.remove("vectorizer.pkl")
 
     print("...Done!")
     print(f"---Total training time: {time.time()-start_time:.2f}s")
