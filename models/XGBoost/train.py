@@ -61,7 +61,6 @@ if __name__ == "__main__":
         model.fit(X_vectorized, y)
         predictions = model.predict(X_vectorized)
 
-        # Log model seperately to have more flexibility on setup
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="climate-fake-news-detector-model",

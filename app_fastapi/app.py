@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
 # Initialise FastAPI
 app = FastAPI(
     title="Climate Fake News Detector API",
-    description="API pour détecter les fake news sur le climat avec un modèle XGBoost.",
+    description="API pour détecter les fake news sur le climat",
     version="1.0.0",
     lifespan=lifespan
 )
