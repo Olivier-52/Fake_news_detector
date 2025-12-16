@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import os
 
 # ---------------------------
 # Page config
@@ -10,7 +11,16 @@ st.set_page_config(
     layout="centered"
 )
 
-
+st.markdown(
+    """
+    <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.markdown("""
 <style>
@@ -21,14 +31,14 @@ html, body, [data-testid="stAppViewContainer"]{
   background: transparent !important;
 }
 
-
 .block-container{
   background: rgba(255,255,255,0.82);
   border: 2px solid rgba(0,0,0,0.14) !important;
   border-radius: 22px !important;
-  padding: 2rem;
+  padding: 0rem 2rem 2rem 2rem;
   outline: 1px solid rgba(255,255,255,0.70);
-  outline-offset: -3px;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -38,33 +48,10 @@ html, body, [data-testid="stAppViewContainer"]{
 # ---------------------------
 st.markdown("""
 <style>
-.block-container { max-width: 920px; padding-top: 2rem; }
 
-.fn-hero {
-  padding: 18px 18px 10px 18px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(235,246,255,0.7), rgba(240,250,245,0.7));
-  border: 1px solid rgba(0,0,0,0.06);
-}
-.fn-title { font-size: 1.85rem; font-weight: 850; margin: 0; }
-.fn-sub { color: rgba(0,0,0,0.72); margin-top: 6px; line-height: 1.35; }
-
-.fn-card {
-  background: #ffffff;
-  border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 16px;
-  padding: 16px 18px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.06);
-  margin-top: 14px;
-}
-
-.fn-result-title {
-  font-size: 1.18rem;
-  font-weight: 550;
-  margin: 0 0 10px 0;
-}
-
-.fn-muted { color: rgba(0,0,0,0.65); font-size: 0.95rem; }
+.fn-title { font-size: 1.85rem; font-weight: 850; Margin: 0 0 0 0; }
+.fn-sub { color: rgba(0,0,0,0.72); line-height: 1.35; Margin: 0 0 0 0; }
+            
 .fn-badge {
   display: inline-block;
   padding: 4px 10px;
@@ -74,9 +61,9 @@ st.markdown("""
   border: 1px solid rgba(0,0,0,0.08);
   background: rgba(0,0,0,0.02);
 }
+
 .small-note { font-size: 0.88rem; color: rgba(0,0,0,0.60); }
 
-/* Big indicator */
 .fn-indicator-wrap{
   display:flex;
   align-items:center;
@@ -112,15 +99,12 @@ st.markdown("""
 # ---------------------------
 # Header / Hero
 # ---------------------------
-st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
-#st.markdown('<div class="fn-hero">', unsafe_allow_html=True)
 st.markdown('<p class="fn-title">🌍 FakeNews</p>', unsafe_allow_html=True)
 st.markdown(
     '<p class="fn-sub">Collez un texte <b>en français</b> sur le changement climatique et obtenez une estimation : '
     '<b>fiable</b>, <b>faux</b> ou <b>biaisé</b>.</p>',
     unsafe_allow_html=True
 )
-#st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
 # Session state
@@ -131,7 +115,6 @@ if "user_text" not in st.session_state:
 # ---------------------------
 # Input card
 # ---------------------------
-#st.markdown('<div class="fn-card">', unsafe_allow_html=True)
 
 st.session_state.user_text = st.text_area(
     label="",
@@ -158,12 +141,13 @@ with c3:
         st.session_state.user_text = ""
 
 st.markdown('<p class="small-note">Astuce: plus le texte est long, plus la classification est stable.</p>', unsafe_allow_html=True)
-#st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
 # Predict (API call)
 # ---------------------------
-API_URL = "https://olivier-52-climate-fake-news-api.hf.space/predict"
+# API_URL comporte l'adresse de l'API pour la prédiction du modèle
+# exemple: https://[your_HF_name]-[your_space_name].hf.space/predict
+API_URL = os.environ["API_URL"]
 
 verify = st.button("Vérifier la nouvelle", type="primary", use_container_width=True)
 
@@ -213,10 +197,8 @@ if verify:
                 result = response.json()
 
                 prediction = result.get("prediction", "unknown")
-                conf = result.get("confidence", None)   # если API вернёт confidence, UI подхватит
-                reasons = result.get("reasons", None)   # если появятся причины
-
-                #st.markdown('<div class="fn-card">', unsafe_allow_html=True)
+                conf = result.get("confidence", None)
+                reasons = result.get("reasons", None)
 
                 # Big indicator + message
                 if prediction == 2:

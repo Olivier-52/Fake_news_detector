@@ -8,15 +8,14 @@ from typing import Optional
 import asyncio
 from contextlib import asynccontextmanager
 
-# Charge les variables d'environnement
 load_dotenv()
 
-# Configuration des variables d'environnement
+# Variables MLflow : URI de tracking, nom du modèle et stage
 MLFLOW_TRACKING_APP_URI = os.getenv("MLFLOW_TRACKING_APP_URI")
 MODEL_NAME = os.getenv("MODEL_NAME")
-STAGE = os.getenv("STAGE")
+STAGE = os.getenv("STAGE", "production")
 
-# Configure les identifiants AWS pour accéder au bucket S3
+# Variables AWS pour accéder au bucket S3 qui contient les artifacts de MLflow
 os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("AWS_ACCESS_KEY_ID")
 os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("AWS_SECRET_ACCESS_KEY")
 
@@ -24,14 +23,22 @@ os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("AWS_SECRET_ACCESS_KEY")
 model = None
 vectorizer = None
 
-# Fonction pour charger le modèle depuis MLflow
 def load_model():
+    """
+    Charge le modèle depuis MLflow.
+
+    Charge le modèle depuis MLflow en utilisant l'URI de tracking
+    MLFLOW_TRACKING_APP_URI, le nom du modèle MODEL_NAME, et le stage STAGE.
+     
+    Si le modèle n'existe pas, leve une exception HTTPException avec un code
+    d'état 500 et un message d'erreur détaillé.
+
+    Returns:
+        None
+    """
     global model
     try:
-        # Configure l'URI de tracking MLflow
         mlflow.set_tracking_uri(MLFLOW_TRACKING_APP_URI)
-
-        # Charge le modèle depuis MLflow
         model_uri = f"models:/{MODEL_NAME}@{STAGE}"
         model = mlflow.sklearn.load_model(model_uri)
         print("Modèle chargé avec succès depuis MLflow.")
@@ -42,23 +49,30 @@ def load_model():
             detail=f"Impossible de charger le modèle depuis MLflow : {e}"
         )
 
-# Fonction pour charger le vectorizer depuis MLflow
 def load_vectorizer():
+    """
+    Charge le vectorizer depuis MLflow.
+
+    Charge le vectorizer depuis MLflow en utilisant l'URI de tracking
+    MLFLOW_TRACKING_APP_URI, le nom du modèle MODEL_NAME, et le stage STAGE.
+     
+    Si le vectorizer n'existe pas, leve une exception HTTPException avec un code
+    d'état 500 et un message d'erreur détaillé.
+
+    Returns:
+        Le vectorizer chargé depuis MLflow.
+    """
     try:
-        # Initialise le client MLflow
         client = mlflow.MlflowClient(MLFLOW_TRACKING_APP_URI)
 
-        # Récupère les informations sur le modèle
         model_info = client.get_model_version_by_alias(MODEL_NAME, STAGE)
         run_id = model_info.run_id
 
-        # Télécharge le fichier vectorizer.pkl depuis MLflow
         local_path = mlflow.artifacts.download_artifacts(
             artifact_path="vectorizer.pkl",
             run_id=run_id
         )
 
-        # Charge le vectorizer depuis le fichier
         with open(local_path, "rb") as f:
             vectorizer = pickle.load(f)
 
@@ -70,8 +84,19 @@ def load_vectorizer():
             detail=f"Impossible de charger le vectorizer : {e}"
         )
 
-# Fonction asynchrone pour charger le modèle et le vectorizer
 async def load_model_and_vectorizer():
+    """
+    Charge le modèle et le vectorizer depuis MLflow en parallèle.
+
+    Charge le modèle et le vectorizer en utilisant l'URI de tracking
+    MLFLOW_TRACKING_APP_URI, le nom du modèle MODEL_NAME, et le stage STAGE.
+     
+    Si le modèle ou le vectorizer n'existe pas, leve une exception HTTPException
+    avec un code d'état 500 et un message d'erreur détaillé.
+
+    Returns:
+        None
+    """
     try:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, load_model)
@@ -85,14 +110,15 @@ async def load_model_and_vectorizer():
             detail=f"Impossible de charger le modèle ou le vectorizer : {e}"
         )
 
-# Charge le modèle et le vectorizer au démarrage
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Code à exécuter au démarrage
+    """
+    Charge le modèle et le vectorizer au démarrage de l'application de maniere asynchrone.
+    """
     await load_model_and_vectorizer()
     yield
+    
 
-# Initialise FastAPI
 app = FastAPI(
     title="Climate Fake News Detector API",
     description="API pour détecter les fake news sur le climat",
@@ -100,12 +126,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Modèle pour les données d'entrée
 class TextInput(BaseModel):
     text: str
 
 @app.get("/")
 async def read_root():
+    """
+    Renvoie un message de bienvenue sur l'API ainsi que le lien vers la documentation.
+    """
     return {
         "message": "Bienvenue sur l'API Climate Fake News Detector !",
         "documentation": "Consultez la documentation de l'API à l'adresse /docs."    
@@ -113,6 +141,18 @@ async def read_root():
 
 @app.post("/predict")
 async def predict(input_data: TextInput):
+    """
+    Fait une prédiction sur un texte donné en utilisant le modèle et le vectorizer chargés.
+
+    Args:
+        input_data (TextInput): Objet contenant le texte à prédire.
+
+    Returns:
+        dict: Dictionnaire contenant la prédiction (0 les articles avec un biais, 1 pour les articles faux, et 2 pour les articles fiable).
+
+    Raises:
+        HTTPException: Si le modèle ou le vectorizer n'est pas chargé ou si une erreur survient lors de la prédiction.
+    """
     global model, vectorizer
     if model is None or vectorizer is None:
         raise HTTPException(

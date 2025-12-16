@@ -8,3 +8,6 @@ dataFrameSerialization = "legacy"
 base="light"
 primaryColor="#000000ff"
 textColor="#000000ff"
+
+[client]
+showSidebarNavigation = false

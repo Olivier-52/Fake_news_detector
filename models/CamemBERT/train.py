@@ -1,0 +1,178 @@
+import pandas as pd
+import numpy as np
+import mlflow
+from mlflow.models.signature import infer_signature
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.utils.class_weight import compute_class_weight
+from transformers import (
+    CamembertTokenizer,
+    CamembertForSequenceClassification,
+    Trainer,
+    TrainingArguments,
+)
+from datasets import Dataset
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import os
+import time
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Configuration des variables d'environnement
+mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_APP_URI"])
+MLFLOW_TRACKING_APP_URI = os.environ["MLFLOW_TRACKING_APP_URI"]
+AWS_ACCESS_KEY_ID = os.environ["AWS_ACCESS_KEY_ID"]
+AWS_SECRET_ACCESS_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
+
+URL_TRAIN_DATA = "hf://datasets/readerbench/fakenews-climate-fr/fake-fr.csv"
+EXPERIMENT_NAME = "Climate_Fake_News_Detector_Project"
+TARGET_COLUMN = "Label"
+
+if __name__ == "__main__":
+    # Initialisation de MLflow
+    mlflow.set_experiment(EXPERIMENT_NAME)
+    experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
+    client = mlflow.tracking.MlflowClient()
+    run = client.create_run(experiment.experiment_id)
+
+    print("Training model...")
+
+    start_time = time.time()
+
+    # Activation de l'autolog pour PyTorch
+    mlflow.pytorch.autolog(log_models=False)
+
+    # Chargement des données
+    df = pd.read_csv(URL_TRAIN_DATA)
+
+    # Encodage des labels
+    label_encoder = LabelEncoder()
+    df["Label"] = label_encoder.fit_transform(df["Label"])
+
+    # Séparation des données
+    train_df, test_df = train_test_split(
+        df,
+        test_size=0.2,
+        random_state=42,
+        stratify=df["Label"]
+    )
+
+    # Conversion en Dataset Hugging Face
+    train_dataset = Dataset.from_pandas(train_df)
+    test_dataset = Dataset.from_pandas(test_df)
+
+    # Tokenization
+    tokenizer = CamembertTokenizer.from_pretrained("camembert-base")
+
+    def tokenize(batch):
+        return tokenizer(
+            batch["Text"],
+            truncation=True,
+            padding="max_length",
+            max_length=256
+        )
+
+    train_dataset = train_dataset.map(tokenize, batched=True)
+    test_dataset = test_dataset.map(tokenize, batched=True)
+
+    # Renommage des colonnes pour correspondre aux attentes de Hugging Face
+    train_dataset = train_dataset.rename_column("Label", "labels")
+    test_dataset = test_dataset.rename_column("Label", "labels")
+
+    # Sélection des colonnes utiles
+    cols_to_keep = ["input_ids", "attention_mask", "labels"]
+    train_dataset = train_dataset.remove_columns(
+        [c for c in train_dataset.column_names if c not in cols_to_keep]
+    )
+    test_dataset = test_dataset.remove_columns(
+        [c for c in test_dataset.column_names if c not in cols_to_keep]
+    )
+
+    # Format PyTorch
+    train_dataset.set_format("torch")
+    test_dataset.set_format("torch")
+
+    # Calcul des poids de classe
+    class_weights = compute_class_weight(
+        class_weight="balanced",
+        classes=np.unique(df["Label"]),
+        y=df["Label"]
+    )
+    class_weights = torch.tensor(class_weights, dtype=torch.float)
+
+    # Initialisation du modèle
+    model = CamembertForSequenceClassification.from_pretrained(
+        "camembert-base",
+        num_labels=len(label_encoder.classes_)
+    )
+
+    # Définition des métriques
+    def compute_metrics(eval_pred):
+        logits, labels = eval_pred
+        preds = np.argmax(logits, axis=1)
+        return {
+            "accuracy": accuracy_score(labels, preds),
+            "f1_macro": f1_score(labels, preds, average="macro")
+        }
+
+    # Arguments d'entraînement
+    training_args = TrainingArguments(
+        output_dir="./results",
+        num_train_epochs=3,
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        logging_dir="./logs",
+        weight_decay=0.01,
+        learning_rate=5e-5,
+    )
+
+    # Classe Trainer personnalisée pour gérer les poids de classe
+    class WeightedTrainer(Trainer):
+        def __init__(self, class_weights=None, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.class_weights = class_weights
+
+        def compute_loss(self, model, inputs, return_outputs=False):
+            labels = inputs.pop("labels")
+            outputs = model(**inputs)
+            logits = outputs.logits
+            loss_fct = nn.CrossEntropyLoss(weight=self.class_weights.to(logits.device))
+            loss = loss_fct(logits, labels)
+            return (loss, outputs) if return_outputs else loss
+
+    # Initialisation du Trainer
+    trainer = WeightedTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=test_dataset,
+        compute_metrics=compute_metrics,
+        class_weights=class_weights,
+    )
+
+    # Entraînement et logging avec MLflow
+    with mlflow.start_run(run_id=run.info.run_id) as run:
+        trainer.train()
+
+        # Prédictions pour le logging
+        predictions = trainer.predict(test_dataset)
+        preds = np.argmax(predictions.predictions, axis=1)
+
+        # Exemple de X pour la signature (à adapter selon tes données)
+        X = test_dataset["input_ids"][:1]
+
+        mlflow.pytorch.log_model(
+            pytorch_model=model,
+            artifact_path="climate-fake-news-detector-model",
+            registered_model_name="climate-fake-news-detector-model-CamemBERT-v1",
+            signature=infer_signature(X, preds),
+        )
+
+    print("...Done!")
+    print(f"---Total training time: {time.time() - start_time:.2f}s")
