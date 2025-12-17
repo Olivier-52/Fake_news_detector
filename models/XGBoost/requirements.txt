@@ -3,3 +3,5 @@ scikit-learn==1.4.2
 pandas
 python-dotenv
 xgboost
+fsspec
+huggingface-hub
