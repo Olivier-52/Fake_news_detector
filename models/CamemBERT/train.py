@@ -33,7 +33,6 @@ EXPERIMENT_NAME = "Climate_Fake_News_Detector_Project"
 TARGET_COLUMN = "Label"
 
 if __name__ == "__main__":
-    # Initialisation de MLflow
     mlflow.set_experiment(EXPERIMENT_NAME)
     experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
     client = mlflow.tracking.MlflowClient()
@@ -43,17 +42,13 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    # Activation de l'autolog pour PyTorch
     mlflow.pytorch.autolog(log_models=False)
 
-    # Chargement des données
     df = pd.read_csv(URL_TRAIN_DATA)
-
-    # Encodage des labels
+    print("Data loaded from Hugging Face")
     label_encoder = LabelEncoder()
     df["Label"] = label_encoder.fit_transform(df["Label"])
 
-    # Séparation des données
     train_df, test_df = train_test_split(
         df,
         test_size=0.2,
@@ -65,8 +60,8 @@ if __name__ == "__main__":
     train_dataset = Dataset.from_pandas(train_df)
     test_dataset = Dataset.from_pandas(test_df)
 
-    # Tokenization
-    tokenizer = CamembertTokenizer.from_pretrained("camembert-base")
+    tokenizer = CamembertTokenizer.from_pretrained("camembert-base", force_download=True)
+    print("Tokenizer loaded")
 
     def tokenize(batch):
         return tokenizer(
@@ -105,12 +100,10 @@ if __name__ == "__main__":
     class_weights = torch.tensor(class_weights, dtype=torch.float)
 
     # Initialisation du modèle
-    model = CamembertForSequenceClassification.from_pretrained(
-        "camembert-base",
-        num_labels=len(label_encoder.classes_)
-    )
-
-    # Définition des métriques
+    model = CamembertForSequenceClassification.from_pretrained("camembert-base",
+                                                               num_labels=len(label_encoder.classes_)
+                                                               )
+    print("Model initialized")
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
         preds = np.argmax(logits, axis=1)
@@ -119,52 +112,35 @@ if __name__ == "__main__":
             "f1_macro": f1_score(labels, preds, average="macro")
         }
 
-    # Arguments d'entraînement
     training_args = TrainingArguments(
         output_dir="./results",
-        num_train_epochs=3,
+        num_train_epochs=2,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
-        eval_strategy="epoch",
+        evaluation_strategy="epoch",
         save_strategy="epoch",
         logging_dir="./logs",
         weight_decay=0.01,
-        learning_rate=5e-5,
+        learning_rate=5e-5
     )
 
-    # Classe Trainer personnalisée pour gérer les poids de classe
-    class WeightedTrainer(Trainer):
-        def __init__(self, class_weights=None, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.class_weights = class_weights
-
-        def compute_loss(self, model, inputs, return_outputs=False):
-            labels = inputs.pop("labels")
-            outputs = model(**inputs)
-            logits = outputs.logits
-            loss_fct = nn.CrossEntropyLoss(weight=self.class_weights.to(logits.device))
-            loss = loss_fct(logits, labels)
-            return (loss, outputs) if return_outputs else loss
-
-    # Initialisation du Trainer
-    trainer = WeightedTrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
-        compute_metrics=compute_metrics,
-        class_weights=class_weights,
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics
     )
 
     # Entraînement et logging avec MLflow
     with mlflow.start_run(run_id=run.info.run_id) as run:
         trainer.train()
 
-        # Prédictions pour le logging
         predictions = trainer.predict(test_dataset)
+
         preds = np.argmax(predictions.predictions, axis=1)
 
-        # Exemple de X pour la signature (à adapter selon tes données)
         X = test_dataset["input_ids"][:1]
 
         mlflow.pytorch.log_model(
