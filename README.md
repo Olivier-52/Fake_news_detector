@@ -24,7 +24,7 @@ Les fausses informations et les contenus manipulateurs sur le climat se propagen
 ## ✨ Fonctionnalités
 
 ### Modèles de Machine Learning
-Le projet inclut cinq modèles entraînables via le script `train.py` :
+Le projet inclut cinq modèles entraînables via des scripts python `train.py` :
 - CamemBERT
 - Régression logistique
 - Naive Bayes
@@ -47,7 +47,7 @@ Le projet inclut cinq modèles entraînables via le script `train.py` :
 - **Python 3.10 ou supérieur**
 - **Docker**
 - **Environnement [MLFlow](https://mlflow.org/docs/latest/genai/getting-started/connect-environment/) (version 2.21.3)**
-- **Librairies Python** : Installées automatiquement via `requirements.txt` (spécifique à chaque modèle).
+- **Librairies Python** : Répertoriées dans les `requirements.txt`, et installées automatiquement via les DockerFile.
 - **Accès à un [bucket S3 AWS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html)** (pour les artefacts MLFlow).
 
 ---
@@ -64,9 +64,21 @@ cd Fake_news_detector
 
 Pour chaque modèle, se placer dans le répertoire correspondant :
 ```Bash
-cd models/\$NOM_DU_MODELE
-pip install -r requirements.txt
+cd models/repertoire_du_model_a_entrainer
 ```
+Utiliser le répertoire corréspondant au modèle à entraîner :
+
+- **CamemBERT** pour entraîner CamemBERT, un modèle d’IA spécialisé dans le traitement du français, inspiré par BERT, qui comprend le sens des mots et des phrases en analysant de grands textes.
+
+- **LogisticRegression** pour entraîner un modèle de Régression Logistique simple et efficace pour classer des données en catégories (ex. : spam ou non-spam) en calculant des probabilités.
+
+- **NaiveBayes** pour entraîner un modèle Naive Bayes rapide et intuitif qui classe des éléments (comme des emails) en se basant sur des probabilités et des hypothèses simplificatrices.
+
+- **SVM** pour entraîner un modèle SVM (Support Vector Machine), une technique qui trace des frontières entre des groupes de données pour les séparer au mieux, utile pour la classification.
+
+- **XGBoost** pour entraîner un modèle XGBoost puissant et précis qui combine plusieurs "arbres de décision" pour améliorer ses prédictions, souvent utilisé en compétition.
+
+
 Créer un fichier .env avec les variables suivantes :
 
 ```
@@ -74,14 +86,14 @@ MLFLOW_TRACKING_APP_URI=Endpoint_de_votre_serveur_MLFlow
 AWS_ACCESS_KEY_ID=Votre_ID_clé_AWS
 AWS_SECRET_ACCESS_KEY=Votre_clé_secrète_AWS
 ```
-Puis lancer l’entraînement :
+Puis lancer l’entraînement depuis un conteneur Docker:
 ```Bash
-python train.py
+docker build -t your_image_name .
+docker run your_image_name
 ```
 ### 3. Déployer l’API FastAPI (Backend)
 
 Construire l’image Docker depuis le répertoire app_fastapi.
-Variables d’environnement requises :
 
 L'application comporte les variables d'environnement suivantes :
 ```
@@ -98,7 +110,7 @@ Construire l’image Docker depuis le répertoire app_streamlit.
 Variable d’environnement requise 
 
 ```
-API_URL=URL_du_endpoint_/predict
+API_URL=URL_du_endpoint
 ```
 
 ---
