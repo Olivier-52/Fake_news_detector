@@ -147,7 +147,7 @@ st.markdown('<p class="small-note">Astuce: plus le texte est long, plus la class
 # ---------------------------
 # API_URL comporte l'adresse de l'API pour la prédiction du modèle
 # exemple: https://[your_HF_name]-[your_space_name].hf.space/predict
-API_URL = os.environ["API_URL"]
+API_URL = os.environ["API_URL"] + '/predict'
 
 verify = st.button("Vérifier la nouvelle", type="primary", use_container_width=True)
 
@@ -180,6 +180,31 @@ def render_indicator(kind: str, main_label: str, conf: float | None):
     </div>
     """, unsafe_allow_html=True)
 
+def normalize_api_response(result):
+    # Cas scikit-learn : {"prediction": 0}
+    if isinstance(result.get("prediction"), int):
+        prediction = result["prediction"]
+        conf = result.get("confidence", None)
+        reasons = result.get("reasons", None)
+
+    # Cas transformers : {"prediction": "LABEL_2", "score": 0.95}
+    elif isinstance(result.get("prediction"), str):
+        label_to_int = {
+            "LABEL_0": 0,
+            "LABEL_1": 1,
+            "LABEL_2": 2,
+        }
+        prediction = label_to_int.get(result["prediction"], -1)
+        conf = result.get("score", None)
+        reasons = result.get("reasons", None)
+
+    else:
+        prediction = -1  # Valeur par défaut pour "non classé"
+        conf = None
+        reasons = None
+
+    return prediction, conf, reasons
+
 if verify:
     text = (st.session_state.user_text or "").strip()
 
@@ -196,9 +221,8 @@ if verify:
                 response.raise_for_status()
                 result = response.json()
 
-                prediction = result.get("prediction", "unknown")
-                conf = result.get("confidence", None)
-                reasons = result.get("reasons", None)
+                # Normalise la réponse
+                prediction, conf, reasons = normalize_api_response(result)
 
                 # Big indicator + message
                 if prediction == 2:
@@ -229,8 +253,6 @@ if verify:
                             st.write(reasons)
 
                 st.markdown("</div>", unsafe_allow_html=True)
-
-            
 
             except requests.exceptions.RequestException as e:
                 st.error(f"Une erreur est survenue lors de la vérification de l'article: {e}")
