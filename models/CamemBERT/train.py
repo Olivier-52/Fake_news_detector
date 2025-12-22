@@ -146,7 +146,7 @@ if __name__ == "__main__":
         mlflow.pytorch.log_model(
             pytorch_model=model,
             artifact_path="climate-fake-news-detector-model",
-            registered_model_name="climate-fake-news-detector-model-CamemBERT-v1",
+            registered_model_name="climate-fake-news-detector-model-CamemBERT",
             signature=infer_signature(X, preds),
         )
 
