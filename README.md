@@ -137,6 +137,11 @@ Résultat de prédiction :
 ![Résultat de prédiction](/images/FakeNews_app_utilisation.png)
 
 ---
+## 🤝 Contributeur
+
+[madamanastasia](https://github.com/madamanastasia), [WissamHouzir](https://github.com/WissamHouzir), [Olivier-52](https://github.com/Olivier-52)
+
+---
 
 ## 📜 Licence
 Ce projet est sous licence MIT.
