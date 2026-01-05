@@ -1,8 +1,10 @@
 import os
 import uvicorn
 import pandas as pd
+import numpy as np
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, status, File, UploadFile
+from transformers import pipeline
 import mlflow
 from dotenv import load_dotenv
 
@@ -42,22 +44,31 @@ os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("AWS_SECRET_ACCESS_KEY")
 # Variables globales pour stocker le modèle
 mlflow.set_tracking_uri(MLFLOW_TRACKING_APP_URI)
 model_uri = f"models:/{MODEL_NAME}@{STAGE}"
+model = None
+model_type = None  # "sklearn" ou "pytorch"
+classifier = None  # Pour le pipeline Hugging Face
 
 # Chargement conditionnel du modèle
 try:
     # Essayer de charger un modèle scikit-learn
     model = mlflow.sklearn.load_model(model_uri)
+    model_type = "sklearn"
     print("Modèle scikit-learn chargé avec succès.")
+
 except mlflow.exceptions.MlflowException:
     try:
-        # Si échec, essayer de charger un modèle Transformers
-        model = mlflow.transformers.load_model(model_uri)
-        print("Modèle Transformers chargé avec succès.")
-    except Exception as e:
+        model = mlflow.pytorch.load_model(model_uri)
+        model_type = "pytorch"
+        print("Modèle PyTorch chargé avec succès.")
+        classifier = pipeline(task="text-classification", 
+                              model=model, 
+                              tokenizer="camembert-base")
+        
+    except mlflow.exceptions.MlflowException as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erreur lors du chargement du modèle : {e}"
-        )
+    )
 
 app = FastAPI(
     title="Climate Fake News Detector API",
@@ -80,19 +91,27 @@ class TextInput(BaseModel):
 def predict(features: TextInput):
     """
     Fait une prédiction sur un texte donné en utilisant le modèle chargé.
-
-    Args:
-        features (TextInput): Objet contenant le texte à prédire.
-
-    Returns:
-        dict: Dictionnaire contenant la prédiction.
     """
     try:
-        df = pd.DataFrame({"Text": [features.text]})
+        if model_type == "sklearn":
+            # Cas scikit-learn : prédiction directe
+            df = pd.DataFrame({"Text": [features.text]})
+            prediction = model.predict(df)[0]
+            return {"prediction": int(prediction)}
 
-        prediction = model.predict(df)[0]
+        elif model_type == "pytorch":
+            # Cas PyTorch (transformers) : utiliser le pipeline
+            result = classifier(features.text)
+            return {
+                "prediction": result[0]["label"],
+                "score": result[0]["score"]
+            }
 
-        return {"prediction": int(prediction)}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Aucun modèle chargé ou type de modèle non reconnu."
+            )
 
     except Exception as e:
         raise HTTPException(
